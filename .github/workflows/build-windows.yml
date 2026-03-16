@@ -21,14 +21,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install GDAL
-        run: |
-          pip install pipwin
-          pipwin install gdal
-
       - name: Install dependencies
         run: |
           pip install customtkinter Pillow pyinstaller
+          pip install gdal --find-links https://github.com/cgohlke/geospatial-wheels/releases/latest
 
       - name: Build executable with PyInstaller
         run: |
