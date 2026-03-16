@@ -1,0 +1,61 @@
+name: Build macOS DMG
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install GDAL
+        run: |
+          brew install gdal
+          pip install gdal==$(gdal-config --version)
+
+      - name: Install dependencies
+        run: |
+          pip install customtkinter Pillow pyinstaller
+
+      - name: Build .app with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name "GeoConvert" \
+            --icon "geoconvert_logo_final.png" \
+            --add-data "geoconvert_logo_final.png:." \
+            --add-data "geoconvert_logo_flat_white_1773006660522.png:." \
+            --add-data "converter:converter" \
+            gui.py
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "GeoConvert" \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "GeoConvert.app" 150 185 \
+            --app-drop-link 450 185 \
+            "GeoConvert-${{ github.ref_name }}.dmg" \
+            "dist/"
+
+      - name: Upload .dmg to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GeoConvert-${{ github.ref_name }}.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
