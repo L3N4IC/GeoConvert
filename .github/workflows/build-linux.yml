@@ -1,1 +1,87 @@
+name: Build Linux Packages (deb & rpm)
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install GDAL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
+          pip install gdal==$(gdal-config --version)
+
+      - name: Install dependencies
+        run: |
+          pip install customtkinter Pillow pyinstaller
+
+      - name: Build binary with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name "geoconvert" \
+            --add-data "geoconvert_logo_final.png:." \
+            --add-data "geoconvert_logo_flat_white_1773006660522.png:." \
+            --add-data "converter:converter" \
+            gui.py
+
+      - name: Install fpm (package builder)
+        run: |
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential
+          sudo gem install fpm
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build .deb package
+        run: |
+          fpm \
+            -s dir \
+            -t deb \
+            -n geoconvert \
+            -v ${{ steps.version.outputs.VERSION }} \
+            --description "GeoConvert - Geospatial raster image converter" \
+            --url "https://github.com/${{ github.repository }}" \
+            --license "Apache-2.0" \
+            --maintainer "HOUIZOT Lénaïc" \
+            --category "science" \
+            dist/geoconvert=/usr/local/bin/geoconvert
+
+      - name: Build .rpm package
+        run: |
+          fpm \
+            -s dir \
+            -t rpm \
+            -n geoconvert \
+            -v ${{ steps.version.outputs.VERSION }} \
+            --description "GeoConvert - Geospatial raster image converter" \
+            --url "https://github.com/${{ github.repository }}" \
+            --license "Apache-2.0" \
+            --maintainer "HOUIZOT Lénaïc" \
+            --category "science" \
+            dist/geoconvert=/usr/local/bin/geoconvert
+
+      - name: Upload packages to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.deb
+            *.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
