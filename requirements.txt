@@ -1,0 +1,6 @@
+# Core GUI
+customtkinter>=5.2.0
+Pillow>=10.0.0
+
+# Geospatial (GDAL Python bindings — install GDAL system library first)
+# gdal>=3.0.0  # Uncomment and pin to your system GDAL version: pip install gdal==$(gdal-config --version)
