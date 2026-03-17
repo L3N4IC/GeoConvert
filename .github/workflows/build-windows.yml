@@ -25,15 +25,9 @@ jobs:
         id: gdal_wheel
         shell: bash
         run: |
-          RELEASE_URL=$(curl -s https://api.github.com/repos/cgohlke/geospatial-wheels/releases/latest \
-            | python -c "
-import sys, json
-assets = json.load(sys.stdin)['assets']
-matches = [a['browser_download_url'] for a in assets
-           if 'gdal' in a['name'].lower() and 'cp311' in a['name'] and 'win_amd64' in a['name']]
-print(matches[0])
-")
-          echo "url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          curl -s https://api.github.com/repos/cgohlke/geospatial-wheels/releases/latest > release.json
+          GDAL_URL=$(python -c "import json; data=json.load(open('release.json')); assets=data['assets']; url=next(a['browser_download_url'] for a in assets if 'gdal' in a['name'].lower() and 'cp311' in a['name'] and 'win_amd64' in a['name']); print(url)")
+          echo "url=$GDAL_URL" >> $GITHUB_OUTPUT
 
       - name: Install dependencies
         run: |
