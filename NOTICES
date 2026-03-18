@@ -1,0 +1,50 @@
+GeoConvert
+Copyright 2026 HOUIZOT Lénaïc
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full license text.
+
+---
+
+This software includes or depends upon the following third-party components:
+
+---
+
+GDAL - Geospatial Data Abstraction Library
+Copyright (c) 1998-2024 Frank Warmerdam, Even Rouault, and contributors
+License: MIT/X (https://opensource.org/licenses/MIT)
+Source:  https://gdal.org
+         https://github.com/OSGeo/gdal
+
+---
+
+CustomTkinter
+Copyright (c) 2023 Tom Schimansky
+License: MIT (https://opensource.org/licenses/MIT)
+Source:  https://github.com/TomSchimansky/CustomTkinter
+
+---
+
+Pillow (PIL Fork)
+Copyright (c) 1997-2011 Secret Labs AB
+Copyright (c) 1995-2011 Fredrik Lundh
+Copyright (c) 2010-2024 Alex Clark and contributors
+License: HPND (Historical Permission Notice and Disclaimer)
+         https://raw.githubusercontent.com/python-pillow/Pillow/main/LICENSE
+Source:  https://python-pillow.org
+         https://github.com/python-pillow/Pillow
+
+---
+
+NumPy
+Copyright (c) 2005-2024 NumPy Developers
+License: BSD 3-Clause (https://opensource.org/licenses/BSD-3-Clause)
+Source:  https://numpy.org
+         https://github.com/numpy/numpy
+
+---
+
+Python Standard Library
+Copyright (c) 2001-2024 Python Software Foundation
+License: PSF License Agreement (https://docs.python.org/3/license.html)
+Source:  https://www.python.org
