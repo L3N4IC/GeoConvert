@@ -38,7 +38,6 @@ jobs:
             --windowed \
             --name "geoconvert" \
             --add-data "geoconvert_logo_final.png:." \
-            --add-data "geoconvert_logo_flat_white_1773006660522.png:." \
             --add-data "converter:converter" \
             gui.py
 
