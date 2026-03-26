@@ -23,6 +23,16 @@ import json
 import threading
 from pathlib import Path
 import webbrowser
+try:
+    from urllib.request import urlopen, Request
+    from urllib.error import URLError
+    HAS_URLLIB = True
+except ImportError:
+    HAS_URLLIB = False
+
+# ─── Version de l'application ────────────────────────────────────────────────
+APP_VERSION = "1.0.1"
+GITHUB_REPO = "L3N4IC/GeoConvert"  # <user>/<repo>
 
 try:
     from PIL import Image, ImageTk, ImageOps
@@ -43,7 +53,7 @@ if CTK:
     from tkinter import ttk, filedialog, messagebox
 
 
-# ─── Couleurs et style ────────────────────────────────────────────────────────
+# ─── Colors and style ────────────────────────────────────────────────────────
 
 COLORS_DARK = {
     "bg":       "#0F1113",
@@ -73,7 +83,7 @@ COLORS_LIGHT = {
     "border":   "#CBD5E1",
 }
 
-# ─── Préférences utilisateur ─────────────────────────────────────────────────
+# ─── User preferences ───────────────────────────────────────────────────────
 
 _PREFS_PATH = Path.home() / ".config" / "geoconvert" / "preferences.json"
 
@@ -99,16 +109,16 @@ def _save_prefs(prefs: dict) -> None:
         print(f"Avertissement : impossible de sauvegarder les préférences : {e}")
 
 _prefs = _load_prefs()
-_current_theme = _prefs.get("theme", "light")  # Thème clair par défaut
-_current_lang  = _prefs.get("lang", "fr")       # Langue française par défaut
+_current_theme = _prefs.get("theme", "light")  # Light theme by default
+_current_lang  = _prefs.get("lang", "fr")       # French language by default
 
 def get_colors():
     return COLORS_DARK if _current_theme == "dark" else COLORS_LIGHT
 
-# COLORS n'est plus un alias statique — utiliser get_colors() partout.
-# Cette variable est conservée uniquement pour la rétro-compatibilité avec
-# les références directes dans les widgets non-registrés (ex: VisualSelector).
-# Elle est mise à jour à chaque changement de thème via _apply_theme().
+# COLORS is no longer a static alias — use get_colors() everywhere.
+# This variable is kept only for backward compatibility with
+# direct references in unregistered widgets (e.g. VisualSelector).
+# It is updated on every theme change via _apply_theme().
 COLORS = get_colors()
 
 def C(key: str) -> str:
@@ -119,7 +129,7 @@ def C(key: str) -> str:
     """
     return get_colors()[key]
 
-# ─── Traductions ─────────────────────────────────────────────────────────────
+# ─── Translations ───────────────────────────────────────────────────────────
 
 def t(key: str) -> str:
     """Retourne la traduction de la clé dans la langue courante."""
@@ -129,25 +139,28 @@ def t(key: str) -> str:
     return entry.get(_current_lang, entry.get("fr", key))
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
-    # ── En-tête
-    "app_version":        {"fr": "v1.0.0",                             "en": "v1.0.0"},
+    # ── Header
+    "app_version":        {"fr": f"v{APP_VERSION}",                    "en": f"v{APP_VERSION}"},
+    "update_available":   {"fr": "🆕 Nouvelle version disponible : ",    "en": "🆕 New version available: "},
+    "update_download":    {"fr": "Télécharger",                          "en": "Download"},
+    "update_dismiss":     {"fr": "Ignorer",                              "en": "Dismiss"},
     "tooltip_theme":      {"fr": "Basculer entre le mode sombre et le mode clair", "en": "Toggle dark / light mode"},
     "tooltip_lang":       {"fr": "Changer la langue",                  "en": "Change language"},
-    # ── Carte Source
+    # ── Source card
     "card_source":        {"fr": "📂  Sélection Source",               "en": "📂  Source Selection"},
     "radio_single":       {"fr": "Fichier(s) unique(s)",               "en": "Single file(s)"},
     "radio_batch":        {"fr": "Dossier (Batch)",                    "en": "Folder (Batch)"},
     "btn_choose_files":   {"fr": "Choisir fichier(s)",                 "en": "Choose file(s)"},
     "btn_choose_folder":  {"fr": "Choisir dossier",                    "en": "Choose folder"},
     "no_file":            {"fr": "Aucun fichier sélectionné",          "en": "No file selected"},
-    # ── Carte Destination
+    # ── Destination card
     "card_dest":          {"fr": "💾  Destination et Format",          "en": "💾  Destination & Format"},
     "label_format":       {"fr": "Format :",                           "en": "Format:"},
     "label_epsg":         {"fr": "EPSG :",                             "en": "EPSG:"},
     "tooltip_epsg_search":{"fr": "Rechercher un code EPSG",            "en": "Search for an EPSG code"},
     "placeholder_output": {"fr": "Dossier de sortie (optionnel)",      "en": "Output folder (optional)"},
     "btn_browse":         {"fr": "Parcourir",                          "en": "Browse"},
-    # ── Carte Traitement
+    # ── Processing card
     "card_proc":          {"fr": "⚙️  Options de Traitement",          "en": "⚙️  Processing Options"},
     "label_depth":        {"fr": "Profondeur :",                       "en": "Depth:"},
     "label_quality":      {"fr": "Qualité :",                          "en": "Quality:"},
@@ -181,7 +194,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
                            "en": "Image sampling method (if resizing):\n- Speed: Nearest neighbor (Keeps raw pixels)\n- Normal: Bilinear (Smooth)\n- Quality: Cubic (High precision smoothing)"},
     "tooltip_quality":    {"fr": "Qualité JPEG / J2K (1-100%)\nPlus la qualité est basse, plus l'image sera pixelisée et légère.",
                            "en": "JPEG / J2K Quality (1-100%)\nThe lower the quality, the more pixelated and lightweight the image will be."},
-    # ── Outils rapides
+    # ── Quick tools
     "card_tools":         {"fr": "🛠️  Outils Rapides",                 "en": "🛠️  Quick Tools"},
     "btn_inspect":        {"fr": "🔍  Détails Techniques",             "en": "🔍  Technical Details"},
     "btn_estimate":       {"fr": "⚖️  Estimer la Taille",             "en": "⚖️  Estimate Size"},
@@ -200,7 +213,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "shapefile_mosaic_lbl":{"fr": "Emprise globale (mosaïque)",       "en": "Global extent (mosaic)"},
     "shapefile_single_lbl":{"fr": "Emprise du fichier",               "en": "File extent"},
     "shapefile_cancelled":{"fr": "Création du Shapefile annulée.",   "en": "Shapefile creation cancelled."},
-    # ── Carte À propos
+    # ── About card
     "card_about":         {"fr": "ℹ️  Informations & Liens",           "en": "ℹ️  Information & Links"},
     "about_desc":         {"fr": "GeoConvert est un utilitaire open-source basé sur GDAL, conçu\npour simplifier la conversion et le traitement d'images géospatiales.",
                            "en": "GeoConvert is an open-source utility based on GDAL, designed\nto simplify the conversion and processing of geospatial images."},
@@ -220,18 +233,18 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "sysinfo_numpy":      {"fr": "NumPy",                              "en": "NumPy"},
     "sysinfo_installed":  {"fr": "Installé",                           "en": "Installed"},
     "sysinfo_missing":    {"fr": "Non installé",                       "en": "Not installed"},
-    # ── Carte Découpage
+    # ── Clipping card
     "card_clip":          {"fr": "✂️  Découpage (AOI)",               "en": "✂️  Clipping (AOI)"},
     "chk_clip":           {"fr": "Activer le recadrage",               "en": "Enable clipping"},
     "btn_autoextent":     {"fr": "📐 Auto-emprise",                    "en": "📐 Auto-extent"},
     "btn_visual":         {"fr": "👁️ Sélection Visuelle",             "en": "👁️ Visual Selection"},
-    # ── Carte Exécution
+    # ── Execution card
     "card_exec":          {"fr": "🚀  Progression et Journal",         "en": "🚀  Progress & Log"},
     "btn_convert":        {"fr": "LANCER LA CONVERSION",               "en": "START CONVERSION"},
     "btn_stop":           {"fr": "ARRÊTER",                            "en": "STOP"},
     "btn_stop_ing":       {"fr": "🛑 Arrêt...",                        "en": "🛑 Stopping..."},
     "status_ready":       {"fr": "Prêt",                               "en": "Ready"},
-    # ── Boîtes de dialogue
+    # ── Dialog boxes
     "dlg_no_file_title":  {"fr": "Aucun fichier",                      "en": "No file"},
     "dlg_no_file_msg":    {"fr": "Veuillez sélectionner au moins un fichier source.",
                            "en": "Please select at least one source file."},
@@ -250,7 +263,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
                            "en": "Select at least one source file for visual selection."},
     "dlg_no_valid_files": {"fr": "Aucun fichier image valide trouvé.",  "en": "No valid image file found."},
     "dlg_thumb_error":    {"fr": "Impossible de générer la miniature.", "en": "Unable to generate thumbnail."},
-    # ── Journal
+    # ── Log
     "log_start":          {"fr": "▶  Début de la conversion — format : ", "en": "▶  Starting conversion — format: "},
     "log_files_count":    {"fr": "fichier(s) à traiter",               "en": "file(s) to process"},
     "log_mosaic_mode":    {"fr": "Mode Mosaïque activé : 1 seul fichier de sortie sera généré via VRT",
@@ -279,11 +292,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "log_fail":           {"fr": "   ✗  ",                              "en": "   ✗  "},
     "log_time":           {"fr": "   Temps : ",                         "en": "   Time: "},
     "log_error":          {"fr": "\n✗  Erreur : ",                      "en": "\n✗  Error: "},
-    # ── Boîtes de dialogue fin de conversion
+    # ── End-of-conversion dialog boxes
     "dlg_done_mosaic_msg":{"fr": "Mosaïque créée avec succès !\nSource : ", "en": "Mosaic created successfully!\nSource: "},
     "dlg_done_files":     {"fr": " fichiers\nDestination : ",            "en": " files\nDestination: "},
     "dlg_done_batch_msg": {"fr": " fichier(s) converti(s) vers ",       "en": " file(s) converted to "},
-    # ── Fenêtre Inspection
+    # ── Inspection window
     "inspect_title":      {"fr": "Inspection : ",                       "en": "Inspection: "},
     "inspect_group_title":{"fr": "Résumé de Groupe : ",                 "en": "Group Summary: "},
     "inspect_group_files":{"fr": " fichiers",                          "en": " files"},
@@ -309,7 +322,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "inspect_status_ok":  {"fr": "✅ Homogène",                         "en": "✅ Homogeneous"},
     "inspect_status_warn":{"fr": "⚠ Hétérogène (Attention)",           "en": "⚠ Heterogeneous (Warning)"},
     "inspect_bbox":       {"fr": "🌍 Emprise combinée (BBox)",          "en": "🌍 Combined Extent (BBox)"},
-    # ── Fenêtre Estimation
+    # ── Estimation window
     "estimate_title":     {"fr": "Estimation de l'Espace Disque",       "en": "Disk Space Estimate"},
     "estimate_header":    {"fr": "⚖️ Prédiction de stockage",           "en": "⚖️ Storage Prediction"},
     "estimate_files":     {"fr": "Fichiers à traiter",                  "en": "Files to process"},
@@ -327,7 +340,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "estimate_warn_50g":  {"fr": "🚨 Attention : Volume de données très important !",
                            "en": "🚨 Warning: Very large data volume!"},
     "btn_understood":     {"fr": "Compris",                             "en": "Got it"},
-    # ── Fenêtre Sélection Visuelle
+    "btn_open_folder":    {"fr": "📁 Ouvrir le dossier",                 "en": "📁 Open folder"},
+    # ── Visual Selection window
     "visual_title":       {"fr": "Sélection visuelle (Rectangle)",      "en": "Visual selection (Rectangle)"},
     "visual_loupe":       {"fr": "🔍 Loupe (x4)",                       "en": "🔍 Zoom (x4)"},
     "visual_actions":     {"fr": "🛠️ Actions",                         "en": "🛠️ Actions"},
@@ -344,7 +358,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "shortcut_enter_desc":{"fr": "Valider",                             "en": "Confirm"},
     "shortcut_esc":       {"fr": "Echap",                               "en": "Esc"},
     "shortcut_esc_desc":  {"fr": "Annuler",                             "en": "Cancel"},
-    # ── Fenêtre EPSG
+    # ── EPSG window
     "epsg_title":         {"fr": "Recherche de code EPSG",              "en": "EPSG code search"},
     "epsg_search_label":  {"fr": "🔍 Rechercher :",                     "en": "🔍 Search:"},
     "epsg_placeholder":   {"fr": "Ex: 2154, France, Lambert...",        "en": "E.g.: 4326, World, WGS84..."},
@@ -353,7 +367,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "epsg_col_desc":      {"fr": "Description",                         "en": "Description"},
     "epsg_validate":      {"fr": "✅ Valider",                          "en": "✅ Confirm"},
     "epsg_cancel":        {"fr": "❌ Annuler",                          "en": "❌ Cancel"},
-    # ── Fenêtre Licence & Guide
+    # ── License & Guide window
     "license_title":      {"fr": "Licence Apache 2.0",                  "en": "Apache 2.0 License"},
     "help_title":         {"fr": "Guide Rapide",                        "en": "Quick Guide"},
     "help_msg":           {"fr": "Bienvenue dans GeoConvert !\n\n1. Sélectionnez un ou plusieurs fichiers sources.\n2. Choisissez un format et un dossier de destination.\n3. Configurez les options de compression et de traitement.\n4. (Optionnel) Découpez votre image avec le recadrage.\n5. Cliquez sur Convertir pour lancer le processus.\n\nPour plus d'informations, consultez le dépôt GitHub.",
@@ -368,7 +382,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "comp_png9":          {"fr": "ZLEVEL=9 (Max)",                     "en": "ZLEVEL=9 (Max)"},
     "comp_png6":          {"fr": "ZLEVEL=6 (Défaut)",                  "en": "ZLEVEL=6 (Default)"},
     "comp_png1":          {"fr": "ZLEVEL=1 (Rapide)",                  "en": "ZLEVEL=1 (Fast)"},
-    # ── Progression
+    # ── Progress
     "progress_init":      {"fr": "Initialisation…",                     "en": "Initialising…"},
     "inspect_loading":    {"fr": "⏳ Chargement des métadonnées…",        "en": "⏳ Loading metadata…"},
     "estimate_loading":   {"fr": "⏳ Calcul en cours…",                    "en": "⏳ Computing…"},
@@ -393,7 +407,7 @@ def _toggle_language() -> None:
     _prefs["lang"] = _current_lang
     _save_prefs(_prefs)
 
-# ─── Utilitaire Info-bulle (ToolTip) ──────────────────────────────────────────
+# ─── Tooltip utility ────────────────────────────────────────────────────────
 class ToolTip:
     def __init__(self, widget, text):
         self.widget = widget
@@ -401,8 +415,8 @@ class ToolTip:
         self.tip_window = None
         self.id = None
         
-        # Sur CustomTkinter, les événements doivent souvent être liés au widget interne (_canvas ou _name)
-        # Mais le .bind() standard de CTk gère <Enter> et <Leave>. Certains widgets (CTkSegmentedButton) lèvent NotImplementedError.
+        # On CustomTkinter, events often need to be bound to the inner widget (_canvas or _name)
+        # but standard CTk .bind() handles <Enter> and <Leave>. Some widgets (CTkSegmentedButton) raise NotImplementedError.
         try:
             self.widget.bind("<Enter>", self.schedule_tip, add="+")
             self.widget.bind("<Leave>", self.hide_tip, add="+")
@@ -419,7 +433,7 @@ class ToolTip:
     def show_tip(self):
         if not self.text or self.tip_window: return
         
-        # Positionnement intelligent sous le curseur
+        # Smart positioning below the cursor
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
         
@@ -428,13 +442,13 @@ class ToolTip:
         tw.wm_geometry("+%d+%d" % (x, y))
         tw.attributes("-topmost", True)
         
-        # Couleurs dynamiques selon le thème actif
+        # Dynamic colors based on the active theme
         colors = get_colors()
         bg_color = colors["surface2"]
         accent_color = colors["accent"]
-        fg_color = colors["text"]  # Noir en thème clair, blanc en thème sombre
+        fg_color = colors["text"]  # Black in light theme, white in dark theme
         
-        # On crée un cadre pour la bordure
+        # Create a frame for the border
         frame = tk.Frame(tw, background=accent_color, padx=1, pady=1)
         frame.pack()
         
@@ -457,8 +471,8 @@ class ToolTip:
 def add_tooltip(widget, text):
     tip = ToolTip(widget, text)
     
-    # Patch spécial CustomTkinter : lier les événements du canvas interne
-    # au MÊME ToolTip (sans créer un second, pour éviter le doublon)
+    # CustomTkinter patch: bind inner canvas events to the SAME ToolTip
+    # (without creating a second one, to avoid duplicates)
     if hasattr(widget, "_canvas"):
         try:
             widget._canvas.bind("<Enter>", tip.schedule_tip, add="+")
@@ -467,7 +481,7 @@ def add_tooltip(widget, text):
         except Exception:
             pass
 
-# ─── Menu déroulant CTK maison (sans clignotement) ──────────────────────────
+# ─── Custom CTK dropdown (flicker-free) ─────────────────────────────────────
 
 class FlatDropdown:
     """Menu déroulant au design identique au CTkOptionMenu natif.
@@ -485,7 +499,7 @@ class FlatDropdown:
 
     def __init__(self, parent, variable: tk.StringVar, values: list,
                  width=180, height=30):
-        # Le conteneur tk.Frame natif absorbe les reflows de son enfant CTK
+        # The native tk.Frame container absorbs reflows from its CTK child
         self._frame = tk.Frame(parent, width=width, height=height,
                                bg=COLORS["surface"])  # bg = surface du parent
         self._frame.pack_propagate(False)
@@ -495,7 +509,7 @@ class FlatDropdown:
         self._width  = width
         self._height = height
 
-        # CTkOptionMenu intérieur — mêmes paramètres que fmt_menu
+        # Inner CTkOptionMenu — same parameters as fmt_menu
         self._menu = ctk.CTkOptionMenu(
             self._frame,
             variable=variable,
@@ -518,9 +532,9 @@ class FlatDropdown:
     def set_values(self, values: list):
         """Change la liste d'options sans provoquer de reflow sur le parent."""
         self._values = list(values)
-        # configure(values=...) reconstruit le CTkOptionMenu INTERNE,
-        # mais le tk.Frame parent a pack_propagate(False) donc le reflow
-        # est absorbé et n'affecte pas la carte.
+        # configure(values=...) rebuilds the INNER CTkOptionMenu,
+        # but the parent tk.Frame has pack_propagate(False) so the reflow
+        # is absorbed and does not affect the card.
         self._menu.configure(values=values)
 
     def configure(self, **kwargs):
@@ -553,7 +567,7 @@ class FlatDropdown:
 
 
 
-# ─── Sélecteur Visuel ────────────────────────────────────────────────────────
+# ─── Visual Selector ────────────────────────────────────────────────────────
 
 class VisualSelector(tk.Toplevel):
     """Fenêtre de sélection visuelle pour le découpage."""
@@ -561,11 +575,11 @@ class VisualSelector(tk.Toplevel):
         super().__init__(parent)
         self.title(t("visual_title"))
         self.geometry("1200x850")
-        self.configure(bg=C("bg"))  # C() est dynamique : reflète le thème actif
+        self.configure(bg=C("bg"))  # C() is dynamic: reflects the active theme
         self.transient(parent)
         self.grab_set()
 
-        # Layout Split: Left (Canvas) | Right (Zoom + Help)
+        # Layout split: Left (Canvas) | Right (Zoom + Help)
         self.main_frame = tk.Frame(self, bg=C("bg"))
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
@@ -580,12 +594,12 @@ class VisualSelector(tk.Toplevel):
         self.callback = callback
         self.thumb_path = thumb_path
         
-        # Charger l'image
+        # Load the image
         self.img = Image.open(thumb_path)
         self.photo = ImageTk.PhotoImage(self.img)
         self.img_w, self.img_h = self.img.size
         
-        # Canvas (Left)
+        # Canvas (left)
         self.canvas = tk.Canvas(self.left_col, width=self.img_w, height=self.img_h, 
                                bg="black", highlightthickness=0)
         self.canvas.pack(pady=10)
@@ -599,13 +613,13 @@ class VisualSelector(tk.Toplevel):
                                     bg="black", highlightthickness=1, highlightbackground=C("accent"))
         self.zoom_canvas.pack(padx=10)
         
-        # Créer l'item image UNE SEULE FOIS — sera mis à jour via itemconfig()
+        # Create the image item ONCE — updated via itemconfig()
         self._zoom_item = self.zoom_canvas.create_image(0, 0, anchor="nw")
-        # Créer les lignes du curseur central UNE SEULE FOIS — seront repositionnées via coords()
+        # Create the crosshair lines ONCE — repositioned via coords()
         self._cursor_v = self.zoom_canvas.create_line(140, 130, 140, 150, fill=C("accent2"), width=1)
         self._cursor_h = self.zoom_canvas.create_line(130, 140, 150, 140, fill=C("accent2"), width=1)
 
-        self.zoom_photo = None  # Référence forte pour éviter le garbage collection
+        self.zoom_photo = None  # Strong reference to prevent garbage collection
         
         # --- Actions Panel ---
         tk.Label(self.right_col, text=t("visual_actions"), bg=COLORS["surface"], 
@@ -652,7 +666,7 @@ class VisualSelector(tk.Toplevel):
             tk.Label(row, text=key, bg=C("surface"), fg=C("accent2"), font=("Helvetica", 9, "bold")).pack(side="left")
             tk.Label(row, text=f" : {desc}", bg=C("surface"), fg=C("text_dim"), font=("Helvetica", 9)).pack(side="left")
         
-        # Rectangle de sélection
+        # Selection rectangle
         self.rect = None
         self.start_x = None
         self.start_y = None
@@ -668,7 +682,7 @@ class VisualSelector(tk.Toplevel):
         self.bind("<Return>", lambda e: self.confirm())
         self.bind("<Escape>", lambda e: self.destroy())
         
-        # Baseline help text
+        # Baseline hint text
         if CTK:
             ctk.CTkLabel(self.left_col, text=t("visual_hint"),
                         text_color=C("text_dim"), font=("Helvetica", 11, "italic")).pack(pady=10)
@@ -714,7 +728,7 @@ class VisualSelector(tk.Toplevel):
         """
         x, y = event.x, event.y
         
-        # Définir la boîte de crop sur l'image originale (70x70 px → zoom 4x vers 280x280)
+        # Define the crop box on the original image (70x70 px → 4x zoom to 280x280)
         crop_size = 70
         half = crop_size // 2
         
@@ -723,13 +737,13 @@ class VisualSelector(tk.Toplevel):
         
         # Crop et Resize
         cropped = self.img.crop((left, top_px, left + crop_size, top_px + crop_size))
-        zoomed = cropped.resize((280, 280), Image.NEAREST)  # NEAREST pour bien voir les pixels
+        zoomed = cropped.resize((280, 280), Image.NEAREST)  # NEAREST to keep pixels sharp
         
-        # Réutiliser l'item image existant : évite la fuite mémoire et les empilements
+        # Reuse the existing image item: avoids memory leaks and canvas stacking
         self.zoom_photo = ImageTk.PhotoImage(zoomed)
         self.zoom_canvas.itemconfig(self._zoom_item, image=self.zoom_photo)
         
-        # Remonter le curseur au premier plan (sans le recréer)
+        # Bring the crosshair to the front (without recreating it)
         self.zoom_canvas.tag_raise(self._cursor_v)
         self.zoom_canvas.tag_raise(self._cursor_h)
 
@@ -741,14 +755,14 @@ class VisualSelector(tk.Toplevel):
             self.destroy()
             return
             
-        # Mapper les coordonnées canvas [0, img_w] -> emprise [min, max]
+        # Map canvas coordinates [0, img_w] -> real-world extent [min, max]
         x1, y1, x2, y2 = self.canvas.coords(self.rect)
         
-        # Trier pour avoir min/max
+        # Sort to get min/max
         canv_xmin, canv_xmax = min(x1, x2), max(x1, x2)
         canv_ymin, canv_ymax = min(y1, y2), max(y1, y2)
         
-        # Calculer en monde réel
+        # Compute real-world coordinates
         ext_xmin = self.extent["ulx"]
         ext_xmax = self.extent["lrx"]
         ext_ymin = self.extent["lry"]
@@ -756,20 +770,20 @@ class VisualSelector(tk.Toplevel):
         
         res_xmin = ext_xmin + (canv_xmin / self.img_w) * (ext_xmax - ext_xmin)
         res_xmax = ext_xmin + (canv_xmax / self.img_w) * (ext_xmax - ext_xmin)
-        # Note Y est souvent inversé en raster (Top -> Bottom)
+        # Note: Y is often inverted in raster data (Top -> Bottom)
         res_ymax = ext_ymax - (canv_ymin / self.img_h) * (ext_ymax - ext_ymin)
         res_ymin = ext_ymax - (canv_ymax / self.img_h) * (ext_ymax - ext_ymin)
         
         self.callback(res_xmin, res_ymax, res_xmax, res_ymin)
         self.destroy()
         
-        # Supprimer la miniature
+        # Delete the thumbnail temp file
         try:
             os.remove(self.thumb_path)
         except:
             pass
 
-# ─── Sélecteur EPSG ──────────────────────────────────────────────────────────
+# ─── EPSG Selector ──────────────────────────────────────────────────────────
 
 class EPSGSelector(tk.Toplevel):
     """Fenêtre modale pour rechercher et sélectionner un code EPSG."""
@@ -777,7 +791,7 @@ class EPSGSelector(tk.Toplevel):
         super().__init__(parent)
         self.title(t("epsg_title"))
         self.geometry("600x500")
-        self.configure(bg=C("bg"))  # C() est dynamique : reflète le thème actif
+        self.configure(bg=C("bg"))  # C() is dynamic: reflects the active theme
         self.transient(parent)
         self.grab_set()
 
@@ -805,7 +819,7 @@ class EPSGSelector(tk.Toplevel):
         list_frame = tk.Frame(self, bg=C("bg"))
         list_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        # Utiliser un Treeview pour l'affichage en colonnes
+        # Use a Treeview for column display
         columns = ("Code", "Nom", "Description")
         self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", style="Custom.Treeview")
         self.tree.heading("Code", text=t("epsg_col_code"))
@@ -824,7 +838,7 @@ class EPSGSelector(tk.Toplevel):
 
         self.tree.bind("<Double-1>", self.on_double_click)
 
-        # Style pour le Treeview — C() assure les couleurs du thème actif
+        # Treeview style — C() ensures active theme colors
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
@@ -876,10 +890,10 @@ class EPSGSelector(tk.Toplevel):
         """
         if not hasattr(self, 'full_bank'):
             return
-        # Annuler le timer précédent s'il existe
+        # Cancel the previous timer if any
         if hasattr(self, '_search_after_id'):
             self.after_cancel(self._search_after_id)
-        # Replanifier dans 150ms
+        # Reschedule in 150ms
         self._search_after_id = self.after(150, self._do_search)
 
     def _do_search(self):
@@ -894,7 +908,7 @@ class EPSGSelector(tk.Toplevel):
             or query in item["name"].lower()
             or query in item["desc"].lower()
         ]
-        # Limiter l'affichage à 200 résultats pour éviter de saturar le Treeview
+        # Limit display to 200 results to avoid saturating the Treeview
         self.populate_list(results[:200])
 
     def on_double_click(self, event):
@@ -908,7 +922,7 @@ class EPSGSelector(tk.Toplevel):
             self.callback(str(code))
         self.destroy()
 
-# ─── Application principale ───────────────────────────────────────────────────
+# ─── Main application ───────────────────────────────────────────────────────
 
 class GeoConvertApp:
     def __init__(self):
@@ -925,10 +939,10 @@ class GeoConvertApp:
         self.root.minsize(1100, 750)
         self.root.resizable(True, True)
         
-        # État conversion
+        # Conversion state
         self.is_cancelled = False
-        self._cached_file_count: int = 0  # Cache du nombre de fichiers (mis à jour en thread)
-        self._bit_seg_active: bool = True  # État du widget profondeur (évite les redraws inutiles)
+        self._cached_file_count: int = 0  # Cached file count (updated in background thread)
+        self._bit_seg_active: bool = True  # Depth widget state (avoids unnecessary redraws)
 
         # Variables
         self.source_files: list[Path] = []
@@ -936,7 +950,7 @@ class GeoConvertApp:
         self.format_var = tk.StringVar(value="GeoTIFF")
         self.epsg_var = tk.StringVar(value="")
         
-        # Liste des EPSG courants pour aider l'utilisateur
+        # List of common EPSG codes to help the user
         self.epsg_common = [
             "",
             "4326 - WGS84 (Monde GPS | Lat/Lon)",
@@ -947,13 +961,13 @@ class GeoConvertApp:
             "3948 - CC48 (France Zone 8)",
             "3949 - CC49 (France Zone 9)",
         ]
-        # Variables avancées très utiles
+        # Useful advanced variables
         self.overviews_var = tk.BooleanVar(value=False)
         self.nodata_var = tk.BooleanVar(value=False)
         
-        self.compress_var = tk.StringVar(value=t("comp_deflate")) # Options: Sans, LZW, DEFLATE, JPEG
+        self.compress_var = tk.StringVar(value=t("comp_deflate")) # Options: None, LZW, DEFLATE, JPEG
         self.tiled_var = tk.BooleanVar(value=True)
-        # Variable avancée cachée/optionnelle
+        # Hidden/optional advanced variable
         self.options_var = tk.StringVar()
         
         self.multithread_var = tk.BooleanVar(value=True)
@@ -965,7 +979,7 @@ class GeoConvertApp:
         self.mode_var = tk.StringVar(value="single")
         self.bit_depth_var = tk.StringVar(value="Original")
         
-        # Découpage (Clipping)
+        # Clipping
         self.clip_var = tk.BooleanVar(value=False)
         self.clip_var.trace_add("write", lambda *a: self._toggle_clip_ui())
         self.ulx_var = tk.StringVar(value="")
@@ -973,10 +987,106 @@ class GeoConvertApp:
         self.lrx_var = tk.StringVar(value="")
         self.lry_var = tk.StringVar(value="")
 
+        # Pre-load GDAL/ImageConverter in background at startup
+        # → prevents UI freeze on the first "Convert" click (especially in the executable)
+        self.converter = None
+        def _init_converter():
+            try:
+                from converter.core import ImageConverter
+                self.converter = ImageConverter()
+            except Exception as e:
+                print(f"Warning: ImageConverter pre-init failed: {e}")
+        threading.Thread(target=_init_converter, daemon=True).start()
+
         self._build_ui()
+        # Check for updates in background (2s delay to avoid blocking startup)
+        self.root.after(2000, self._check_for_update)
         self.root.mainloop()
 
     # ── Construction de l'interface ───────────────────────────────────────────
+
+    def _get_converter(self):
+        """Retourne l'instance ImageConverter pré-initialisée.
+
+        Si le thread de démarrage n'est pas encore terminé (très rare,
+        uniquement si l'utilisateur clique avant 1-2s), crée une instance
+        à la volée en fallback synchrone.
+        """
+        if self.converter is not None:
+            return self.converter
+        from converter.core import ImageConverter
+        self.converter = ImageConverter()
+        return self.converter
+
+    def _check_for_update(self) -> None:
+        """Vérifie en arrière-plan si une nouvelle release est disponible sur GitHub.
+        Si oui, affiche un bandeau discret dans le header via root.after().
+        """
+        if not HAS_URLLIB:
+            return
+
+        def _fetch():
+            try:
+                url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+                req = Request(url, headers={"User-Agent": f"GeoConvert/{APP_VERSION}"})
+                with urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode())
+                tag = data.get("tag_name", "").lstrip("v")
+                if not tag:
+                    return
+                # Comparaison simple majeur.mineur.patch
+                def _parse(v):
+                    try: return tuple(int(x) for x in v.split("."))
+                    except: return (0,)
+                if _parse(tag) > _parse(APP_VERSION):
+                    release_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
+                    self.root.after(0, self._show_update_banner, tag, release_url)
+            except Exception:
+                pass  # Toujours silencieux
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _show_update_banner(self, latest_version: str, release_url: str) -> None:
+        """Affiche un bandeau jaune/amber compact sous le header."""
+        if hasattr(self, "_update_banner") and self._update_banner.winfo_exists():
+            return  # Already visible
+
+        msg = t("update_available") + f"v{latest_version}"
+
+        if CTK:
+            banner = ctk.CTkFrame(self.root, fg_color=COLORS["warning"],
+                                  corner_radius=0, height=36)
+            banner.pack(fill="x", padx=0, pady=0, before=self._main_body)
+            banner.pack_propagate(False)
+
+            ctk.CTkLabel(banner, text=msg,
+                         text_color="#1a1a1a",
+                         font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=20)
+
+            ctk.CTkButton(banner, text=t("update_download"),
+                          width=90, height=24, corner_radius=6,
+                          fg_color="#1a1a1a", hover_color="#333",
+                          text_color="white", font=ctk.CTkFont(size=11, weight="bold"),
+                          command=lambda: webbrowser.open(release_url)
+                          ).pack(side="left", padx=(0, 10))
+
+            ctk.CTkButton(banner, text=t("update_dismiss"),
+                          width=70, height=24, corner_radius=6,
+                          fg_color="transparent", hover_color="#ccaa00",
+                          text_color="#1a1a1a",
+                          command=banner.destroy
+                          ).pack(side="left")
+        else:
+            banner = tk.Frame(self.root, bg="#F59E0B", height=32)
+            banner.pack(fill="x", before=self._main_body)
+            tk.Label(banner, text=msg, bg="#F59E0B",
+                     font=("Helvetica", 11, "bold")).pack(side="left", padx=15)
+            tk.Button(banner, text=t("update_download"), relief="flat",
+                      command=lambda: webbrowser.open(release_url)).pack(side="left", padx=(0, 8))
+            tk.Button(banner, text=t("update_dismiss"), relief="flat",
+                      command=banner.destroy).pack(side="left")
+
+        self._update_banner = banner
 
     def _open_epsg_bank(self):
         def set_epsg(code):
@@ -1010,7 +1120,7 @@ class GeoConvertApp:
         else:
             self._build_tk_ui()
         
-        # Charger le logo si disponible
+        # Load logo if available
         self._load_branding()
 
     def _load_branding(self):
@@ -1019,33 +1129,31 @@ class GeoConvertApp:
         if os.path.exists(logo_path) and HAS_PIL:
             try:
                 img = Image.open(logo_path)
-                
-                # Créer une version sombre du logo pour le mode clair (en coloriant le blanc transparent en gris foncé)
+
+                # Dark version of the logo for light mode
                 try:
                     dark_img = img.copy()
                     if dark_img.mode in ('RGBA', 'LA'):
-                        # Remplacer les pixels RGB par la couleur du texte mode clair (#1E293B) tout en gardant l'alpha
                         r, g, b, a = dark_img.convert('RGBA').split()
-                        color_img = Image.new("RGB", dark_img.size, (30, 41, 59)) # #1E293B
+                        color_img = Image.new("RGB", dark_img.size, (30, 41, 59))
                         dark_img = Image.merge("RGBA", (*color_img.split(), a))
                     else:
                         dark_img = ImageOps.invert(dark_img.convert('RGB'))
                 except Exception as e:
                     print(f"Avertissement conversion logo: {e}")
                     dark_img = img
-                
-                # 1. Image pour le header (DPI aware pour CTK)
+
+                # Image for the header
                 if CTK:
                     self.logo_image = ctk.CTkImage(light_image=dark_img, dark_image=img, size=(40, 40))
                 else:
                     header_img = img.resize((40, 40), Image.LANCZOS)
                     self.logo_photo = ImageTk.PhotoImage(header_img)
-                
-                # 2. Icône de la fenêtre (Doit être un PhotoImage pour wm_iconphoto)
-                # On garde une référence forte pour éviter le garbage collection
+
+                # Main window icon only (False = no propagation to child windows)
                 self._window_icon = ImageTk.PhotoImage(img)
-                self.root.wm_iconphoto(True, self._window_icon)
-                
+                self.root.wm_iconphoto(False, self._window_icon)
+
                 if hasattr(self, 'lbl_logo'):
                     self.lbl_logo.configure(image=self.logo_image if CTK else self.logo_photo)
             except Exception as e:
@@ -1054,7 +1162,7 @@ class GeoConvertApp:
     def _build_ctk_ui(self):
         """Interface moderne Premium avec CustomTkinter."""
 
-        # ── En-tête (Branding)
+        # ── Header (Branding)
         header = ctk.CTkFrame(self.root, fg_color="transparent", height=80)
         header.pack(fill="x", padx=30, pady=(20, 10))
 
@@ -1074,7 +1182,7 @@ class GeoConvertApp:
             text_color=COLORS["accent"],
         ).pack(side="left")
 
-        ctk.CTkLabel(
+        self.lbl_version = ctk.CTkLabel(
             header,
             text=t("app_version"),
             font=ctk.CTkFont(size=11, weight="bold"),
@@ -1083,9 +1191,10 @@ class GeoConvertApp:
             padx=10,
             pady=2,
             text_color=COLORS["text_dim"],
-        ).pack(side="left", padx=15)
+        )
+        self.lbl_version.pack(side="left", padx=15)
 
-        # ── Bouton bascule Thème (à droite de l'en-tête)
+        # ── Theme toggle button (right side of header)
         self.btn_theme = ctk.CTkButton(
             header,
             text="☀️",
@@ -1114,15 +1223,16 @@ class GeoConvertApp:
         self.btn_lang.pack(side="right", padx=(0, 8))
         add_tooltip(self.btn_lang, t("tooltip_lang"))
 
-        # ── Corps principal (Deux colonnes de cartes)
+        # ── Main body (two card columns)
         body = ctk.CTkFrame(self.root, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=25, pady=0)
+        self._main_body = body  # reference used to position the update banner before it
 
         # Left Column (Files + Settings)
         left_col = ctk.CTkFrame(body, fg_color="transparent")
         left_col.pack(side="left", fill="both", expand=True, padx=(0, 12))
 
-        # Colonne Droite (Découpage + Logs)
+        # Right column (Clipping + Logs)
         right_col = ctk.CTkFrame(body, fg_color="transparent")
         right_col.pack(side="left", fill="both", expand=True, padx=(12, 0))
 
@@ -1212,12 +1322,12 @@ class GeoConvertApp:
                      text_color=COLORS["accent"]).pack(anchor="w", padx=20, pady=(15, 10))
 
         # Profondeur & Compression
-        # NOTE: on utilise un frame avec grid() pour figer totalement le layout
-        # et éviter tout reflow quand les widgets enfants changent d'état.
+        # NOTE: using a frame with grid() to fully lock the layout
+        # and prevent any reflow when child widgets change state.
         row_depth = tk.Frame(card_proc, bg=COLORS["surface"], height=36)
         row_depth.pack(fill="x", padx=20, pady=(0, 10))
         row_depth.pack_propagate(False)
-        self._row_depth_frame = row_depth  # référence pour mise à jour thème
+        self._row_depth_frame = row_depth  # reference for theme update
 
         self._lbl_depth = tk.Label(row_depth, text=t("label_depth"), bg=COLORS["surface"],
                                    fg=COLORS["text"], font=("Helvetica", 12))
@@ -1229,7 +1339,7 @@ class GeoConvertApp:
                                               text_color=COLORS["text"])
         self.bit_seg.pack(side="left", padx=(0, 15))
 
-        # Compression — FlatDropdown : widget CTK maison, zéro clignotement
+        # Compression — FlatDropdown: custom CTK widget, zero flicker
         self.comp_menu = FlatDropdown(
             row_depth, variable=self.compress_var,
             values=[t("comp_none"), t("comp_lzw"), t("comp_deflate"), t("comp_jpeg")],
@@ -1258,7 +1368,7 @@ class GeoConvertApp:
                                              unselected_color=COLORS["surface2"],
                                              text_color=COLORS["text"])
         self.res_seg.pack(side="left")
-        self.res_seg.set(t("seg_normal")) # Force la sélection visuelle initiale
+        self.res_seg.set(t("seg_normal")) # Force the initial visual selection
 
         # Checkboxes (Mosaic, Multi-core, etc.)
         row_checks = ctk.CTkFrame(card_proc, fg_color="transparent")
@@ -1277,17 +1387,17 @@ class GeoConvertApp:
                                  fg_color=color, checkbox_width=18, checkbox_height=18)
             cb.pack(side="left", padx=(0, 15))
             
-            # Ajout info-bulle sur la checkbox texte ET composant
+            # Add tooltip on checkbox text AND component
             add_tooltip(cb, ttip)
             
-            # Affectation des attributs pour contrôle ultérieur
+            # Store attributes for later control
             if txt == t("chk_mosaic"): self.chk_mosaic = cb
             elif txt == t("chk_multicore"): self.chk_mt = cb
             elif txt == t("chk_tiling"): self.chk_tiled = cb
             elif txt == t("chk_pyramids"): self.chk_ovr = cb
             elif txt == t("chk_nodata"): self.chk_nodata = cb
             
-        # Tooltips supplémentaires sur les autres composants de traitement
+        # Additional tooltips on other processing components
         add_tooltip(self.bit_seg, t("tooltip_depth"))
         add_tooltip(self.comp_menu, t("tooltip_compress"))
         add_tooltip(self.res_seg, t("tooltip_resampling"))
@@ -1318,7 +1428,7 @@ class GeoConvertApp:
                                            text_color=COLORS["text"])
         self.btn_shapefile.pack(side="left")
         
-        # Tooltips pour les boutons
+        # Button tooltips
         add_tooltip(self.btn_inspect, t("tooltip_inspect"))
         add_tooltip(self.btn_estimate, t("tooltip_estimate"))
         add_tooltip(self.btn_shapefile, t("tooltip_shapefile"))
@@ -1357,7 +1467,7 @@ class GeoConvertApp:
                                       text_color=COLORS["text"])
         self.btn_help.pack(side="left")
 
-        # Ligne 2 : Bug, Docs GDAL, Système
+        # Row 2: Bug, GDAL Docs, System
         row_links2 = ctk.CTkFrame(self.card_about, fg_color="transparent")
         row_links2.pack(fill="x", padx=20, pady=(0, 15))
 
@@ -1421,7 +1531,7 @@ class GeoConvertApp:
         self.btn_visual.pack(side="left")
         
         self.entries_clip.extend([self.btn_get_extent, self.btn_visual])
-        self.clip_frame = card_clip # Compatibilité
+        self.clip_frame = card_clip  # Compatibility alias
         self._toggle_clip_ui()
 
         # --- CARTE 5 : EXÉCUTION & LOGS (Droite Bas) ---
@@ -1465,8 +1575,8 @@ class GeoConvertApp:
         self.lbl_fmt_desc = ctk.CTkLabel(self.root, text="")
 
         # ───────────────────────────────────────────────────────────────────────
-        # Registre des widgets pour mise à jour thème/langue sans reconstruction.
-        # Chaque entrée : {"widget": w, "theme": {prop: color_key}, "lang": "t_key"}
+        # Widget registry for theme/language updates without full reconstruction.
+        # Each entry: {"widget": w, "theme": {prop: color_key}, "lang": "t_key"}
         # ───────────────────────────────────────────────────────────────────────
         self._ui_registry = [
             # ── Cartes (frames) ──
@@ -1478,9 +1588,9 @@ class GeoConvertApp:
             {"widget": card_exec,       "theme": {"fg_color": "surface", "border_color": "border"}},
             # ── Boutons Header ──
             {"widget": self.btn_lang,    "theme": {"fg_color": "surface2", "hover_color": "accent"}},
-            # ── Bouton sélection fichiers ──
+            # ── File selection button ──
             {"widget": self.btn_select,  "theme": {"fg_color": "accent"}, "lang": "_select_mode"},
-            # ── Boutons Source ──
+            # ── Source buttons ──
             {"widget": self.radio_single, "theme": {"text_color": "text"}, "lang": "radio_single"},
             {"widget": self.radio_batch,  "theme": {"text_color": "text"}, "lang": "radio_batch"},
             {"widget": self.lbl_files,    "theme": {"text_color": "text_dim"}, "lang": "_lbl_files"},
@@ -1490,7 +1600,7 @@ class GeoConvertApp:
                                                    "text_color": "text"}},
             {"widget": self.ent_out,     "theme": {"border_color": "border"}},
             # ── Boutons Traitement ──
-            # comp_menu est un ttk.Combobox natif — mis à jour via _apply_theme directement
+            # comp_menu is a native ttk.Combobox — updated directly via _apply_theme
 
             {"widget": self.bit_seg,     "theme": {"selected_color": "accent", "unselected_color": "surface2",
                                                    "text_color": "text"}},
@@ -1558,7 +1668,7 @@ class GeoConvertApp:
 
         self.root.configure(bg=COLORS["bg"])
 
-        # En-tête
+        # Header
         header = tk.Frame(self.root, bg=COLORS["surface"], pady=10)
         header.pack(fill="x")
         tk.Label(header, text="🗺  GeoConvert — GDAL",
@@ -1568,7 +1678,7 @@ class GeoConvertApp:
         body = tk.Frame(self.root, bg=COLORS["bg"], padx=15, pady=10)
         body.pack(fill="both", expand=True)
 
-        # ── Sélection Source ──
+        # ── Source selection ──
         src_frame = tk.LabelFrame(body, text="📂 Fichier(s) source", bg=COLORS["bg"], fg=COLORS["accent"],
                                   font=("Helvetica", 11, "bold"), padx=10, pady=10)
         src_frame.pack(fill="x", pady=(0, 10))
@@ -1589,7 +1699,7 @@ class GeoConvertApp:
         tk.Entry(out_frame, textvariable=self.output_dir, bg=COLORS["surface"],
                  fg=COLORS["text"]).pack(side="left", fill="x", expand=True)
 
-        # ── Paramètres de Conversion ──
+        # ── Conversion parameters ──
         opts_frame = tk.LabelFrame(body, text="⚙️ Paramètres de conversion", bg=COLORS["bg"], fg=COLORS["accent"],
                                    font=("Helvetica", 11, "bold"), padx=10, pady=10)
         opts_frame.pack(fill="x", pady=(0, 10))
@@ -1608,7 +1718,7 @@ class GeoConvertApp:
                      width=30).pack(side="left", padx=5)
         tk.Button(row1, text="🔍", command=self._open_epsg_bank, bg=COLORS["surface2"], fg="white").pack(side="left")
 
-        # Sous-ligne 2: Avancé
+        # Sub-row 2: Advanced
         row2 = tk.Frame(opts_frame, bg=COLORS["bg"])
         row2.pack(fill="x", pady=(5, 0))
         tk.Label(row2, text="Compression :", bg=COLORS["bg"], fg=COLORS["text"]).pack(side="left")
@@ -1637,7 +1747,7 @@ class GeoConvertApp:
                                       bg=COLORS["bg"], fg=COLORS["text"], selectcolor=COLORS["surface"])
         self.chk_mt.pack(side="left", padx=5)
 
-        # Sous-ligne 4: Qualité & Ré-éch (TK)
+        # Sub-row 4: Quality & Resampling (TK)
         row4 = tk.Frame(opts_frame, bg=COLORS["bg"])
         row4.pack(fill="x", pady=5)
         tk.Label(row4, text="Qualité (1-100) :", bg=COLORS["bg"], fg=COLORS["text"]).pack(side="left", padx=5)
@@ -1647,7 +1757,7 @@ class GeoConvertApp:
         from tkinter import ttk
         ttk.Combobox(row4, textvariable=self.resampling_var, values=["Plus proche (Vitesse)", "Bilinéaire", "Cubique", "Lanczos (Qualité)"], state="readonly").pack(side="left")
 
-        # Sous-ligne 5 : Découpage (TK)
+        # Sub-row 5: Clipping (TK)
         row5 = tk.Frame(opts_frame, bg=COLORS["bg"])
         row5.pack(fill="x", pady=5)
         tk.Checkbutton(row5, text="Découper (Décimal)", variable=self.clip_var, bg=COLORS["bg"], fg=COLORS["text"], selectcolor=COLORS["surface"]).pack(side="left", padx=5)
@@ -1671,7 +1781,7 @@ class GeoConvertApp:
                                       state="readonly", width=25)
         self.bit_combo.pack(side="left", padx=5)
 
-        # ── Panneau Exécution ──
+        # ── Execution panel ──
         run_frame = tk.Frame(body, bg=COLORS["bg"])
         run_frame.pack(fill="x", pady=10)
 
@@ -1710,7 +1820,7 @@ class GeoConvertApp:
             self.btn_select.configure(text=t("btn_choose_files"))
         self._update_mosaic_state()
 
-    # ── Thème ─────────────────────────────────────────────────────────────────
+    # ── Theme ─────────────────────────────────────────────────────────────────
 
     def _toggle_lang(self):
         """Bascule la langue et met à jour les textes sans reconstruire l'UI."""
@@ -1718,7 +1828,7 @@ class GeoConvertApp:
         if CTK:
             self._apply_lang()
         else:
-            # Fallback léger pour tk pur (non-CTK, cas rare)
+            # Light fallback for pure tk (non-CTK, rare case)
             for child in self.root.winfo_children():
                 child.destroy()
             self._build_ui()
@@ -1732,7 +1842,7 @@ class GeoConvertApp:
         """
         global _current_theme, COLORS
 
-        # ── 1. Basculer le thème global ─────────────────────────────────────
+        # ── 1. Switch global theme ─────────────────────────────────────
         _current_theme = "light" if _current_theme == "dark" else "dark"
         COLORS = get_colors()
         _prefs["theme"] = _current_theme
@@ -1740,35 +1850,155 @@ class GeoConvertApp:
 
         if CTK:
             ctk.set_appearance_mode("light" if _current_theme == "light" else "dark")
-            # ── 2. Mettre à jour les couleurs de tous les widgets enregistrés
+            # ── 2. Update colors for all registered widgets
             self._apply_theme()
         else:
-            # Fallback léger pour tk pur
+            # Light fallback for pure tk
             for child in self.root.winfo_children():
                 child.destroy()
             self._build_ui()
 
 
 
-    # ── Mise à jour thème / langue sans reconstruction ────────────────────────
+    # ── Theme / language update without reconstruction ────────────────────────
 
     def _apply_theme(self):
-        """Met à jour les couleurs de tous les widgets CTk enregistrés."""
+        """Met à jour les couleurs de tous les widgets CTk de la fenêtre.
+
+        Deux passes :
+        1. Parcours récursif de l'arbre de widgets pour couvrir tous les
+           CTkLabel / CTkFrame / CTkButton anonymes créés sans référence self.
+        2. Registre _ui_registry pour les règles de couleur spécifiques.
+        """
         global COLORS
         c = get_colors()
-        COLORS = c  # Synchronise l'alias global pour les classes popup non-registrées
+        COLORS = c
 
-        # Fenêtre principale
+        # ── 1. Main window ────────────────────────────────────────────
         self.root.configure(fg_color=c["bg"])
 
-        # Icone du bouton thème
+        # ── 2. Recursive walk of all CTk widgets ─────────────────────
+        # All known values for each color key (both themes)
+        _surface_vals  = {COLORS_DARK["surface"],  COLORS_LIGHT["surface"]}
+        _surface2_vals = {COLORS_DARK["surface2"], COLORS_LIGHT["surface2"]}
+        _bg_vals       = {COLORS_DARK["bg"],       COLORS_LIGHT["bg"]}
+        _text_vals     = {COLORS_DARK["text"],     COLORS_LIGHT["text"]}
+        _text_dim_vals = {COLORS_DARK["text_dim"], COLORS_LIGHT["text_dim"]}
+        _border_vals   = {COLORS_DARK["border"],   COLORS_LIGHT["border"]}
+
+        def _norm(val):
+            """Normalise une valeur CTK qui peut être str ou list/tuple ['light','dark']."""
+            if isinstance(val, (list, tuple)):
+                return val[0] if val else ""
+            return val or ""
+
+        def _walk(widget):
+            for child in widget.winfo_children():
+                cls = type(child).__name__
+                try:
+                    if cls == "CTkLabel":
+                        col = _norm(child.cget("text_color"))
+                        if col in _text_vals:
+                            child.configure(text_color=c["text"])
+                        elif col in _text_dim_vals:
+                            child.configure(text_color=c["text_dim"])
+
+                    elif cls in ("CTkFrame", "CTkScrollableFrame"):
+                        col = _norm(child.cget("fg_color"))
+                        if col in _surface_vals:
+                            child.configure(fg_color=c["surface"])
+                        elif col in _surface2_vals:
+                            child.configure(fg_color=c["surface2"])
+                        elif col in _bg_vals:
+                            child.configure(fg_color=c["bg"])
+
+                    elif cls == "CTkButton":
+                        col = _norm(child.cget("fg_color"))
+                        if col in _surface2_vals:
+                            child.configure(fg_color=c["surface2"], text_color=c["text"])
+
+                    elif cls == "CTkCheckBox":
+                        child.configure(text_color=c["text"])
+
+                    elif cls == "CTkSegmentedButton":
+                        child.configure(
+                            unselected_color=c["surface2"],
+                            text_color=c["text"],
+                        )
+
+                    elif cls == "CTkSlider":
+                        child.configure(
+                            fg_color=c["surface2"],
+                            progress_color=c["accent"],
+                        )
+
+                    elif cls == "CTkOptionMenu":
+                        col = _norm(child.cget("fg_color"))
+                        if col in _surface2_vals:
+                            child.configure(
+                                fg_color=c["surface2"],
+                                button_color=c["surface2"],
+                                text_color=c["text"],
+                                dropdown_fg_color=c["surface2"],
+                                dropdown_text_color=c["text"],
+                            )
+
+                    elif cls == "CTkEntry":
+                        child.configure(
+                            fg_color=c["surface"],
+                            border_color=c["border"],
+                            text_color=c["text"],
+                        )
+
+                    elif cls == "CTkTextbox":
+                        child.configure(
+                            fg_color=c["bg"],
+                            text_color=c["text"],
+                            border_color=c["border"],
+                        )
+
+                    elif cls == "CTkProgressBar":
+                        child.configure(
+                            fg_color=c["bg"],
+                            progress_color=c["accent"],
+                        )
+
+                    elif cls == "Frame":  # tk.Frame natif
+                        col = child.cget("bg")
+                        if col in _surface_vals:
+                            child.configure(bg=c["surface"])
+                        elif col in _surface2_vals:
+                            child.configure(bg=c["surface2"])
+                        elif col in _bg_vals:
+                            child.configure(bg=c["bg"])
+
+                    elif cls == "Label":  # tk.Label natif
+                        col = child.cget("bg")
+                        fg  = child.cget("fg")
+                        if col in _surface_vals:  child.configure(bg=c["surface"])
+                        elif col in _bg_vals:     child.configure(bg=c["bg"])
+                        if fg in _text_vals:      child.configure(fg=c["text"])
+                        elif fg in _text_dim_vals: child.configure(fg=c["text_dim"])
+
+                except Exception:
+                    pass
+                _walk(child)
+
+        _walk(self.root)
+
+        # ── 3. Theme button + version badge ────────────────────────────────────
         if hasattr(self, "btn_theme"):
             self.btn_theme.configure(
                 text="🌙" if _current_theme == "light" else "☀️",
                 fg_color=c["surface2"], hover_color=c["accent"]
             )
+        if hasattr(self, "lbl_version"):
+            self.lbl_version.configure(
+                fg_color=c["surface2"],
+                text_color=c["text_dim"],
+            )
 
-        # Parcourir le registre et appliquer chaque règle
+        # ── 4. _ui_registry (specific rules) ───────────────────
         for entry in getattr(self, "_ui_registry", []):
             widget = entry.get("widget")
             if widget is None:
@@ -1779,11 +2009,11 @@ class GeoConvertApp:
                     if color_key is not None:
                         props[prop] = c[color_key]
                 if props:
-                    # tk natifs (Frame, Label) utilisent configure() standard
                     widget.configure(**props)
             except Exception:
                 pass
-        # Mettre à jour les widgets tk/ttk natifs (non-CTK)
+
+        # ── 5. Widgets tk/ttk natifs ─────────────────────────────────────────
         try:
             if hasattr(self, "_lbl_depth"):
                 self._lbl_depth.configure(bg=c["surface"], fg=c["text"])
@@ -1801,15 +2031,15 @@ class GeoConvertApp:
 
     def _apply_lang(self):
         """Met à jour les textes de tous les widgets CTk enregistrés."""
-        # Icône de la langue
+        # Language icon
         if hasattr(self, "btn_lang"):
             self.btn_lang.configure(text="🇬🇧" if _current_lang == "fr" else "🇫🇷")
 
-        # Segments dont les valeurs doivent changer avec la langue
+        # Segments whose values must change with the language
         if hasattr(self, "bit_seg"):
             current_val = self.bit_depth_var.get()
             self.bit_seg.configure(values=[t("seg_original"), t("seg_8bit"), t("seg_16bit")])
-            # Conserver la valeur sélectionnée
+            # Preserve the selected value
             if "8" in current_val:
                 self.bit_depth_var.set(t("seg_8bit"))
             elif "16" in current_val:
@@ -1827,14 +2057,14 @@ class GeoConvertApp:
             else:
                 self.resampling_var.set(t("seg_normal"))
 
-        # Mettre à jour le label Profondeur (tk.Label natif)
+        # Update the Depth label (native tk.Label)
         if hasattr(self, "_lbl_depth"):
             try:
                 self._lbl_depth.configure(text=t("label_depth"))
             except Exception:
                 pass
 
-        # Mettre à jour les valeurs du comp_menu (FlatDropdown) selon le format actif
+        # Update comp_menu values (FlatDropdown) based on the active format
         if hasattr(self, "comp_menu") and hasattr(self, "format_var"):
             try:
                 fmt = self.format_var.get()
@@ -1844,28 +2074,28 @@ class GeoConvertApp:
                     self.comp_menu.set_values([t("comp_png9"), t("comp_png6"), t("comp_png1")])
                 else:
                     self.comp_menu.set_values([t("comp_auto")])
-                # Retranscrire la valeur courante dans la nouvelle langue
+                # Translate the current value to the new language
                 self.root.after(0, lambda: self._on_format_change(self.format_var.get()))
             except Exception:
                 pass
 
-        # Parcourir le registre et appliquer le texte traduit
+        # Walk the registry and apply translated text
         for entry in getattr(self, "_ui_registry", []):
             widget = entry.get("widget")
             lang_key = entry.get("lang")
             if widget is None or not lang_key:
                 continue
             try:
-                # Cas spécial : le mode_var détermine le texte du bouton de sélection
+                # Special case: mode_var determines the selection button text
                 if lang_key == "_select_mode":
                     text = t("btn_choose_folder") if self.mode_var.get() == "batch" else t("btn_choose_files")
                 elif lang_key == "_lbl_files":
-                    # Traduire seulement si aucun fichier n'est sélectionné
+                    # Translate only if no file is selected
                     if not self.source_files:
                         widget.configure(text=t("no_file"))
                     continue
                 elif lang_key == "btn_stop":
-                    # Ne mettre à jour que si pas en cours d'arrêt (pas en état btn_stop_ing)
+                    # Only update if not currently stopping (not in btn_stop_ing state)
                     if not self.is_cancelled:
                         widget.configure(text=t("btn_stop"))
                     continue
@@ -1942,7 +2172,7 @@ class GeoConvertApp:
         else:
             self.chk_mosaic.configure(state=state)
 
-        # Clipping autorisé : 1 seul fichier OU plusieurs fichiers en mode mosaïque
+        # Clipping allowed: 1 single file OR multiple files in mosaic mode
         can_clip = total_count == 1 or self.mosaic_var.get()
         clip_state = "normal" if can_clip else "disabled"
         if not can_clip:
@@ -1975,7 +2205,7 @@ class GeoConvertApp:
                         pass
                 else:
                     total += 1
-            # Planifier la mise à jour UI depuis le thread principal
+            # Schedule UI update from the main thread
             self.root.after(0, self._apply_mosaic_state, total)
 
         threading.Thread(target=_scan, daemon=True).start()
@@ -1996,8 +2226,7 @@ class GeoConvertApp:
             
         src = self.source_files[0]
         try:
-            from converter.core import ImageConverter
-            conv = ImageConverter()
+            conv = self._get_converter()
             extent = conv.get_extent(src)
         except Exception as e:
             self._log(f"⚠️ Error : {e}", COLORS["error"])
@@ -2053,9 +2282,8 @@ class GeoConvertApp:
         
         def task():
             try:
-                from converter.core import ImageConverter
-                conv = ImageConverter()
-                
+                conv = self._get_converter()
+
                 if mosaic_mode:
                     thumb_data = conv.get_mosaic_thumbnail(all_files)
                 else:
@@ -2095,7 +2323,7 @@ class GeoConvertApp:
             except Exception:
                 pass
 
-            # 2. Compression + état des checkboxes selon le format
+            # 2. Compression + checkbox states based on format
             if value in ["GeoTIFF", "COG"]:
                 self._update_comp_menu(
                     [t("comp_none"), t("comp_lzw"), t("comp_deflate"), t("comp_jpeg")],
@@ -2131,13 +2359,13 @@ class GeoConvertApp:
             # 3. Profondeur de bits : bloquer sans aucun clignotement
             bit_active = value in ["GeoTIFF", "COG", "PNG", "JPEG", "WebP", "PDF", "JPEG2000"]
             if CTK:
-                # Ne reconfigurer que si l'état a vraiment changé
+                # Only reconfigure if the state actually changed
                 if bit_active != self._bit_seg_active:
                     self._bit_seg_active = bit_active
                     dim = COLORS["text"] if bit_active else COLORS["text_dim"]
                     if hasattr(self.bit_seg, "_buttons_dict"):
                         for btn in self.bit_seg._buttons_dict.values():
-                            # Bloquer/débloquer la command (sans redraw)
+                            # Enable/disable the command (without redraw)
                             if bit_active:
                                 if hasattr(btn, "_seg_original_command"):
                                     btn._command = btn._seg_original_command
@@ -2176,7 +2404,7 @@ class GeoConvertApp:
             self._log("⚠ No valid image file found.", "error")
             return
 
-        # ── Créer la fenêtre immédiatement avec un spinner ──
+        # ── Open the window immediately with a spinner ──
         top = ctk.CTkToplevel(self.root)
         top.configure(fg_color=C("bg"))
         top.geometry("600x650" if len(all_files) == 1 else "600x600")
@@ -2189,9 +2417,8 @@ class GeoConvertApp:
         def _load_and_render():
             """Exécuté dans un thread : lit les métadonnées GDAL puis schedule l'affichage UI."""
             try:
-                from converter.core import ImageConverter
                 from converter.utils import get_human_size
-                conv = ImageConverter()
+                conv = self._get_converter()
 
                 if len(all_files) == 1:
                     src = all_files[0]
@@ -2312,9 +2539,8 @@ class GeoConvertApp:
             return
 
         try:
-            from converter.core import ImageConverter
             from converter.utils import collect_input_files
-            conv = ImageConverter()
+            conv = self._get_converter()
 
             # Collecter tous les fichiers
             all_files = []
@@ -2346,7 +2572,7 @@ class GeoConvertApp:
                     ymin = ymax + gt[5] * ds.RasterYSize
                     extents.append((f, xmin, ymin, xmax, ymax))
                     if projection_wkt is None:
-                        projection_wkt = ds.GetProjection()  # WKT complet, non tronqué
+                        projection_wkt = ds.GetProjection()  # Full WKT, not truncated
                     ds = None
                 except Exception as e:
                     self._log(f"⚠️ Impossible de lire l'emprise de {f.name} : {e}", C("warning"))
@@ -2355,7 +2581,7 @@ class GeoConvertApp:
                 messagebox.showerror(t("dlg_error_title"), "Impossible de déterminer l'emprise des fichiers.")
                 return
 
-            # Demander où sauvegarder via une fenêtre personnalisée
+            # Ask where to save via a custom dialog
             default_name = all_files[0].stem + "_extent" if len(all_files) == 1 else "extents"
             suggested_dir = str(all_files[0].parent)
 
@@ -2365,13 +2591,13 @@ class GeoConvertApp:
                 self._log(t("shapefile_cancelled"), C("text_dim"))
                 return
 
-            # Création du Shapefile avec OGR
+            # Create the Shapefile with OGR
             driver = ogr.GetDriverByName("ESRI Shapefile")
             if not driver:
                 messagebox.showerror(t("dlg_error_title"), "Driver ESRI Shapefile non disponible dans GDAL.")
                 return
 
-            # Supprimer si le fichier existe déjà
+            # Delete if the file already exists
             if os.path.exists(out_path):
                 driver.DeleteDataSource(out_path)
 
@@ -2380,7 +2606,7 @@ class GeoConvertApp:
                 messagebox.showerror(t("dlg_error_title"), f"Impossible de créer le fichier : {out_path}")
                 return
 
-            # Système de coordonnées
+            # Coordinate reference system
             srs = osr.SpatialReference()
             if projection_wkt:
                 srs.ImportFromWkt(projection_wkt)
@@ -2396,7 +2622,7 @@ class GeoConvertApp:
             layer.CreateField(ogr.FieldDefn("xmax", ogr.OFTReal))
             layer.CreateField(ogr.FieldDefn("ymax", ogr.OFTReal))
 
-            # Créer UN polygone par image
+            # Create ONE polygon per image
             for (f, xmin, ymin, xmax, ymax) in extents:
                 ring = ogr.Geometry(ogr.wkbLinearRing)
                 ring.AddPoint(xmin, ymin)
@@ -2418,7 +2644,7 @@ class GeoConvertApp:
                 layer.CreateFeature(feature)
                 feature = None
 
-            # Libérer les ressources
+            # Release resources
             ds = None
 
             shp_name = os.path.basename(out_path)
@@ -2443,7 +2669,7 @@ class GeoConvertApp:
         dlg.grab_set()
         dlg.after(50, dlg.focus_force)
 
-        # ── En-tête
+        # ── Header
         ctk.CTkLabel(dlg, text=t("shapefile_title"),
                      font=ctk.CTkFont(size=15, weight="bold"),
                      text_color=C("accent")).pack(anchor="w", padx=25, pady=(20, 15))
@@ -2531,7 +2757,7 @@ class GeoConvertApp:
             else:
                 all_files.append(p)
 
-        # Capturer les paramètres UI maintenant, avant de passer au thread
+        # Capture UI parameters now, before passing to the thread
         fmt          = self.format_var.get()
         comp         = self.compress_var.get()
         depth        = self.bit_depth_var.get()
@@ -2548,7 +2774,7 @@ class GeoConvertApp:
             except:
                 clipping_active = False
 
-        # ── Fenêtre immédiate avec spinner ──
+        # ── Immediate window with spinner ──
         top = ctk.CTkToplevel(self.root)
         top.title(t("estimate_title"))
         top.geometry("450x350")
@@ -2562,9 +2788,8 @@ class GeoConvertApp:
         def _compute():
             """Exécuté dans un thread : lit les métadonnées et calcule la taille."""
             try:
-                from converter.core import ImageConverter
                 from converter.utils import get_human_size
-                conv = ImageConverter()
+                conv = self._get_converter()
 
                 comp_ratio = 1.0
                 if "LZW" in comp:    comp_ratio = 0.5
@@ -2705,13 +2930,11 @@ class GeoConvertApp:
             logo_img = self.logo_image
         elif hasattr(self, "logo_photo"):
             logo_img = self.logo_photo
-            
         lbl_logo = ctk.CTkLabel(header, text="", image=logo_img, width=40, height=40)
         lbl_logo.pack(side="left", padx=(20, 15), pady=10)
-        
-        ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=18, weight="bold"), 
+        ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=18, weight="bold"),
                       text_color=C("accent")).pack(side="left")
-        ctk.CTkLabel(header, text=f" — {t('license_title')}", font=ctk.CTkFont(size=14), 
+        ctk.CTkLabel(header, text=f" — {t('license_title')}", font=ctk.CTkFont(size=14),
                       text_color=C("text_dim")).pack(side="left", padx=5)
 
         license_text = """Copyright 2026 HOUIZOT Lénaïc
@@ -2764,13 +2987,11 @@ limitations under the License.
             logo_img = self.logo_image
         elif hasattr(self, "logo_photo"):
             logo_img = self.logo_photo
-            
         lbl_logo = ctk.CTkLabel(header, text="", image=logo_img, width=40, height=40)
         lbl_logo.pack(side="left", padx=(20, 15), pady=10)
-        
-        ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=18, weight="bold"), 
+        ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=18, weight="bold"),
                       text_color=C("accent")).pack(side="left")
-        ctk.CTkLabel(header, text=f" — {t('help_title')}", font=ctk.CTkFont(size=14), 
+        ctk.CTkLabel(header, text=f" — {t('help_title')}", font=ctk.CTkFont(size=14),
                       text_color=C("text_dim")).pack(side="left", padx=5)
 
         if CTK:
@@ -2846,7 +3067,7 @@ limitations under the License.
             np_status = t("sysinfo_missing")
             np_color = C("error")
 
-        # Fenêtre
+        # Window
         top = ctk.CTkToplevel(self.root)
         top.title(t("sysinfo_title"))
         top.geometry("520x420")
@@ -2861,7 +3082,6 @@ limitations under the License.
         logo_img = getattr(self, "logo_image", None)
         if logo_img:
             ctk.CTkLabel(header, text="", image=logo_img, width=36, height=36).pack(side="left", padx=(20, 12), pady=12)
-
         ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=17, weight="bold"),
                      text_color=C("accent")).pack(side="left")
         ctk.CTkLabel(header, text=f" — {t('sysinfo_title')}", font=ctk.CTkFont(size=13),
@@ -2893,15 +3113,15 @@ limitations under the License.
 
     # ── Conversion ────────────────────────────────────────────────────────────
 
-    # Nombre maximum de lignes conservées dans le journal.
-    # Au-delà, les lignes les plus anciennes sont supprimées pour éviter
+    # Maximum number of lines kept in the log.
+    # Beyond this limit, the oldest lines are removed to avoid
     # le ralentissement progressif de CTkTextbox sur les longues sessions.
     _LOG_MAX_LINES = 500
 
     def _log(self, msg: str, color: str = ""):
         if CTK:
             self.log_text.insert("end", msg + "\n")
-            # Élaguer si le journal dépasse la limite
+            # Prune if the log exceeds the limit
             line_count = int(self.log_text.index("end-1c").split(".")[0])
             if line_count > self._LOG_MAX_LINES:
                 excess = line_count - self._LOG_MAX_LINES
@@ -2909,7 +3129,7 @@ limitations under the License.
             self.log_text.see("end")
         else:
             self.log_text.insert(tk.END, msg + "\n")
-            # Même limite pour le widget tk.Text standard
+            # Same limit for the standard tk.Text widget
             line_count = int(self.log_text.index(tk.END).split(".")[0])
             if line_count > self._LOG_MAX_LINES:
                 excess = line_count - self._LOG_MAX_LINES
@@ -2925,6 +3145,91 @@ limitations under the License.
             self.progress_bar["value"] = int(value * 100)
             self.lbl_progress.configure(text=label)
 
+    def _show_done_dialog(self, title: str, message: str, kind: str = "success", out_path: str = ""):
+        """Fenêtre de notification de fin de conversion avec logo."""
+        top = ctk.CTkToplevel(self.root) if CTK else tk.Toplevel(self.root)
+        top.title(title)
+        top.resizable(False, False)
+        top.transient(self.root)
+        top.after(100, lambda: top.focus_force())
+        if CTK:
+            top.configure(fg_color=C("bg"))
+        else:
+            top.configure(bg=C("bg"))
+
+        # Header avec logo
+        header = ctk.CTkFrame(top, fg_color=C("surface"), height=60, corner_radius=0) if CTK \
+            else tk.Frame(top, bg=C("surface"))
+        header.pack(fill="x")
+
+        logo_img = getattr(self, "logo_image", None) or getattr(self, "logo_photo", None)
+        if logo_img:
+            if CTK:
+                ctk.CTkLabel(header, text="", image=logo_img, width=36, height=36).pack(side="left", padx=(20, 12), pady=12)
+            else:
+                tk.Label(header, image=logo_img, bg=C("surface")).pack(side="left", padx=(20, 12), pady=12)
+
+        title_label = ctk.CTkLabel(header, text="GeoConvert", font=ctk.CTkFont(size=16, weight="bold"),
+                                   text_color=C("accent")) if CTK \
+            else tk.Label(header, text="GeoConvert", font=("Helvetica", 14, "bold"),
+                          bg=C("surface"), fg=C("accent"))
+        title_label.pack(side="left")
+        sub_label = ctk.CTkLabel(header, text=f" — {title}", font=ctk.CTkFont(size=13),
+                                 text_color=C("text_dim")) if CTK \
+            else tk.Label(header, text=f" — {title}", font=("Helvetica", 12),
+                          bg=C("surface"), fg=C("text_dim"))
+        sub_label.pack(side="left", padx=5)
+
+        # Icon + message
+        icon = "✅" if kind == "success" else "❌"
+        icon_color = C("success") if kind == "success" else C("error")
+
+        body = ctk.CTkFrame(top, fg_color="transparent") if CTK else tk.Frame(top, bg=C("bg"))
+        body.pack(fill="both", expand=True, padx=30, pady=20)
+
+        # Helper to open the destination folder in the system file explorer
+        def _open_folder():
+            folder = out_path if out_path else str(Path.home())
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                import subprocess; subprocess.Popen(["open", folder])
+            else:
+                import subprocess; subprocess.Popen(["xdg-open", folder])
+            top.destroy()
+
+        if CTK:
+            ctk.CTkLabel(body, text=icon, font=ctk.CTkFont(size=32)).pack(pady=(0, 10))
+            ctk.CTkLabel(body, text=message, font=ctk.CTkFont(size=13),
+                         text_color=C("text"), wraplength=380, justify="left").pack()
+            btn_row = ctk.CTkFrame(body, fg_color="transparent")
+            btn_row.pack(pady=(20, 0))
+            ctk.CTkButton(btn_row, text=t("btn_understood"), command=top.destroy,
+                          fg_color=C("accent"), hover_color=C("surface2"),
+                          text_color="white", width=120).pack(side="left", padx=(0, 10))
+            if kind == "success" and out_path:
+                ctk.CTkButton(btn_row, text=t("btn_open_folder"), command=_open_folder,
+                              fg_color=C("surface2"), hover_color=C("accent"),
+                              text_color=C("text"), width=160).pack(side="left")
+        else:
+            tk.Label(body, text=icon, font=("Helvetica", 28), bg=C("bg"), fg=icon_color).pack(pady=(0, 10))
+            tk.Label(body, text=message, font=("Helvetica", 12), bg=C("bg"), fg=C("text"),
+                     wraplength=380, justify="left").pack()
+            btn_row = tk.Frame(body, bg=C("bg"))
+            btn_row.pack(pady=(20, 0))
+            tk.Button(btn_row, text=t("btn_understood"), command=top.destroy).pack(side="left", padx=(0, 10))
+            if kind == "success" and out_path:
+                tk.Button(btn_row, text=t("btn_open_folder"), command=_open_folder).pack(side="left")
+
+        top.bind("<Return>", lambda e: top.destroy())
+        top.bind("<Escape>", lambda e: top.destroy())
+        top.update_idletasks()
+        # Center on the main window
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
+        rx = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        ry = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        top.geometry(f"+{rx}+{ry}")
+
     def _start_conversion(self):
         if not self.source_files:
             messagebox.showwarning(t("dlg_no_file_title"), t("dlg_no_file_msg"))
@@ -2933,18 +3238,18 @@ limitations under the License.
         fmt = self.format_var.get()
         out_dir = self.output_dir.get() or None
         
-        # Extraction intelligente du code EPSG (tolère "4326 - WGS84" ou juste "4326")
+        # Smart EPSG code extraction (accepts "4326 - WGS84" or just "4326")
         epsg_str = self.epsg_var.get().strip()
         epsg = None
         if epsg_str:
-            # Récupère le premier mot qui devrait être le nombre
+            # Get the first token which should be the number
             first_part = epsg_str.split("-")[0].strip()
             if first_part.isdigit():
                 epsg = int(first_part)
             else:
                 self._log(t("log_epsg_invalid") + f"'{epsg_str}'", C("warning"))
         
-        # Découpage ( Clipping )
+        # Clipping (AOI)
         clip_box = None
         if self.clip_var.get():
             try:
@@ -3026,9 +3331,8 @@ limitations under the License.
 
         def run():
             try:
-                from converter.core import ImageConverter
                 from converter.utils import collect_input_files, get_human_size
-                conv = ImageConverter()
+                conv = self._get_converter()
 
                 # Collecte des fichiers
                 all_files = []
@@ -3040,18 +3344,18 @@ limitations under the License.
                 ok = 0
 
                 if self.mosaic_var.get() and len(all_files) > 1:
-                    # -- Mode Mosaïque --
+                    # -- Mosaic mode --
                     self._log(t("log_mosaic_mode"))
                     self.root.after(0, self._set_progress, 0.1, "Construction de la mosaïque virtuelle VRT...")
                     
                     def progress_cb(pct, msg, data):
                         if self.is_cancelled:
-                            return 0 # Arrêt demandé à GDAL
+                            return 0  # Stop requested to GDAL
                         label = f"Mosaïquage + Conversion — {int(pct*100)}%"
                         self.root.after(0, self._set_progress, pct, label)
                         return 1
                         
-                    # On passe la liste de STR au module core
+                    # Pass the list of STR to the core module
                     str_files = [str(f) for f in all_files]
                     result = conv.convert(
                         str_files, 
@@ -3069,7 +3373,7 @@ limitations under the License.
                         clip_box=clip_box
                     )
                     if result.success:
-                        ok = total # On considère l'opération comme réussie pour tous les fichiers
+                        ok = total  # Consider the operation successful for all files
                         self.root.after(0, self._log, t("log_success_mosaic") + f"{result.dst.name} ({get_human_size(result.dst.stat().st_size)})", C("success"))
                         self.root.after(0, self._log, f"   Temps : {result.elapsed:.1f}s", C("text_dim"))
                     else:
@@ -3127,11 +3431,11 @@ limitations under the License.
                     else:
                         msg = f"{ok}/{total}" + t("dlg_done_batch_msg") + out_path
                     
-                    self.root.after(0, messagebox.showinfo, t("dlg_done_title"), msg)
+                    self.root.after(0, self._show_done_dialog, t("dlg_done_title"), msg, "success", out_path or str(all_files[0].parent))
 
             except Exception as e:
-                self.root.after(0, self._log, f"\n✗  Erreur : {e}")
-                self.root.after(0, messagebox.showerror, t("dlg_error_title"), str(e))
+                self.root.after(0, self._log, f"\n\u2717  Erreur : {e}")
+                self.root.after(0, self._show_done_dialog, t("dlg_error_title"), str(e), "error")
             finally:
                 def restore_btn():
                     if CTK:
@@ -3146,7 +3450,7 @@ limitations under the License.
         threading.Thread(target=run, daemon=True).start()
 
 
-# ─── Point d'entrée ──────────────────────────────────────────────────────────
+# ─── Entry point ──────────────────────────────────────────────────────────
 
 def main():
     GeoConvertApp()

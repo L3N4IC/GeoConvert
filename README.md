@@ -246,7 +246,7 @@ Télécharger le wheel GDAL depuis [GIS Internals](https://www.gisinternals.com/
 ### Lancer depuis les sources
 
 ```bash
-git clone https://github.com/your-username/geoconvert.git
+git clone https://github.com/L3N4IC/geoconvert.git
 cd geoconvert
 python -m venv .venv
 source .venv/bin/activate  # Windows : .venv\Scripts\activate
