@@ -65,17 +65,8 @@ class ImageConverter:
 
     @staticmethod
     def _check_gdal():
-        """Verifies that GDAL is available."""
-        try:
-            from osgeo import gdal  # noqa
-        except ImportError:
-            raise ImportError(
-                "GDAL is not installed.\n"
-                "Install it with:\n"
-                "  conda install -c conda-forge gdal\n"
-                "or:\n"
-                "  pip install GDAL==$(gdal-config --version)"
-            )
+        """Verifies that GDAL is available (import already done in __init__)."""
+        pass  # Import handled once in __init__ via 'from osgeo import gdal'
 
     def get_info(self, filepath: str) -> dict:
         """
